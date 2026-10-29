@@ -1,0 +1,190 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Palette IQRA (logo & affiches : bleu → vert, accents lime) ─ */
+  --color-night: #061b26;
+  --color-deep: #0b2b3a;
+  --color-navy: #1e3a78;
+  --color-ocean: #23629b;
+  --color-teal: #1f7a6b;
+  --color-emerald: #2c9a47;
+  --color-leaf: #3fae3a;
+  --color-lime: #b6ee1f;
+  --color-lime-soft: #e3fa9e;
+  --color-mint: #e7f6e3;
+  --color-sky: #e6f0fa;
+  --color-cream: #f7fbf3;
+  --color-sand: #eef5e8;
+
+  /* ── Typographies ───────────────────────────────────────────── */
+  --font-display: var(--font-baloo), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-cairo), ui-sans-serif, system-ui, sans-serif;
+  --font-quran: var(--font-amiri), serif;
+  --font-calli: var(--font-ruqaa), var(--font-amiri), serif;
+
+  /* ── Animations ─────────────────────────────────────────────── */
+  --animate-float: float 7s ease-in-out infinite;
+  --animate-float-slow: float 9s ease-in-out infinite;
+  --animate-marquee: marquee 38s linear infinite;
+  --animate-pulse-ring: pulse-ring 2.6s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(1);
+      opacity: 0.6;
+    }
+    80%,
+    100% {
+      transform: scale(1.35);
+      opacity: 0;
+    }
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 88px;
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-deep);
+  font-family: var(--font-body);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* L'arabe ne supporte pas l'espacement entre lettres (ligatures cassées) */
+:root[dir="rtl"] *:not(.keep-tracking) {
+  letter-spacing: normal !important;
+}
+
+::selection {
+  background: var(--color-lime);
+  color: var(--color-night);
+}
+
+/* ── Motif islamique (étoile à 8 branches) ───────────────────── */
+.pattern-islamic {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='1'%3E%3Cpath d='M14 14h36v36H14z'/%3E%3Cpath d='M32 6.5 57.5 32 32 57.5 6.5 32z'/%3E%3Ccircle cx='32' cy='32' r='7'/%3E%3Cpath d='M0 0l14 14M64 0 50 14M0 64l14-14M64 64 50 50'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 64px 64px;
+}
+
+.pattern-islamic-dark {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%231e3a78' stroke-width='1'%3E%3Cpath d='M14 14h36v36H14z'/%3E%3Cpath d='M32 6.5 57.5 32 32 57.5 6.5 32z'/%3E%3Ccircle cx='32' cy='32' r='7'/%3E%3Cpath d='M0 0l14 14M64 0 50 14M0 64l14-14M64 64 50 50'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 64px 64px;
+}
+
+/* ── Dégradés de marque ───────────────────────────────────────── */
+.bg-brand {
+  background-image: linear-gradient(125deg, var(--color-navy) 0%, var(--color-ocean) 28%, var(--color-teal) 58%, var(--color-leaf) 100%);
+}
+
+.bg-brand-soft {
+  background-image: linear-gradient(125deg, var(--color-ocean), var(--color-emerald));
+}
+
+.text-gradient {
+  background: linear-gradient(110deg, var(--color-ocean), var(--color-emerald));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Surlignage lime façon affiches */
+.swash {
+  background-image: linear-gradient(transparent 58%, color-mix(in srgb, var(--color-lime) 75%, transparent) 58%, color-mix(in srgb, var(--color-lime) 75%, transparent) 92%, transparent 92%);
+  padding-inline: 0.12em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* Arche (fenêtre / mihrab) */
+.arch {
+  border-radius: 999px 999px 1.75rem 1.75rem;
+}
+
+/* ── Verre dépoli ─────────────────────────────────────────────── */
+.glass {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.glass-dark {
+  background: rgba(6, 27, 38, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* ── Carte réactive ───────────────────────────────────────────── */
+.card-glow {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.card-glow:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 40px -18px rgba(30, 58, 120, 0.35);
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-sand);
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-emerald) 55%, white);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-emerald);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Impression (bulletins & reçus) ───────────────────────────── */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: fixed;
+    inset: 0 0 auto 0;
+    margin: 0;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  [role="dialog"] {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
