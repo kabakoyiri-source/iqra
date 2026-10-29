@@ -184,6 +184,17 @@ body {
     max-height: none !important;
     overflow: visible !important;
   }
+  /* Documents longs (listes de classe) : flux normal, sur plusieurs pages */
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+  .print-sheet {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
   .no-print {
     display: none !important;
   }

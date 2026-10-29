@@ -26,6 +26,19 @@ Ouvrir http://localhost:3000.
 Les autres parents du seed (`moussa.coulibaly@gmail.com`, `awa.traore@gmail.com`…) utilisent aussi `parent123`.
 Le bouton ↺ du portail admin restaure les données de démonstration.
 
+## Back-office (`/admin`)
+
+| Page                    | Contenu                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------ |
+| Tableau de bord         | Chiffres clés, taux de recouvrement, effectifs par cycle, remplissage des classes, dossiers à traiter |
+| Inscriptions            | Dossiers en attente / validés / rejetés : encaisser & valider, rejeter, voir les pièces           |
+| Élèves                  | Liste filtrable (cycle, classe, statut, paiement), tri, export CSV                                |
+| Fiche élève             | Identité, famille & fratrie, paiements + reçus imprimables, notes par trimestre + rang, pièces, messages, modifier / changer de statut / supprimer |
+| Classes                 | Classes par cycle avec titulaire, places, moyenne ; page classe : liste, ajout/retrait d'élèves, saisie des notes de toute la classe, classement, liste imprimable |
+| Familles                | Comptes parents, enfants, situation financière, relance de la famille, export CSV                 |
+| Caisse                  | Tous les reçus, totaux, répartition par mode de paiement, filtres, impression, export CSV         |
+| Relances                | Restes à payer, date de dernière relance, relance individuelle ou groupée                         |
+
 ## Où modifier quoi
 
 | Fichier                         | Contenu                                                                    |

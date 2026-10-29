@@ -51,6 +51,13 @@ export const SUBJECT_IDS = [
 ] as const;
 export type SubjectId = (typeof SUBJECT_IDS)[number];
 
+/** Matières évaluées par cycle (utilisées pour la saisie des notes par classe) */
+export const SUBJECTS_BY_SECTION: Record<SectionId, readonly SubjectId[]> = {
+  jardin: ["quran", "arabic", "french", "maths"],
+  primaire: ["quran", "arabic", "tawhid_fiqh", "sira_adab", "french", "maths", "sciences"],
+  college: ["quran", "arabic", "tawhid_fiqh", "sira_adab", "french", "maths", "sciences", "english"],
+};
+
 export const TERM_IDS = ["t1", "t2", "t3"] as const;
 export type TermId = (typeof TERM_IDS)[number];
 
@@ -67,10 +74,18 @@ export const CAMP_POSTERS = [
   { src: "/camp/inscriptions-ouvertes.jpg", key: "inscriptions" },
 ] as const;
 
-export function whatsappLink(message: string) {
-  return `https://wa.me/${SCHOOL.whatsapp}?text=${encodeURIComponent(message)}`;
+export function whatsappLink(message: string, phone: string = SCHOOL.whatsapp) {
+  return `https://wa.me/${phone.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
 }
 
 export function telLink(phone: string) {
   return `tel:${phone.replaceAll(" ", "")}`;
+}
+
+/** Âge en années révolues à partir d'une date AAAA-MM-JJ */
+export function ageFrom(birthDate: string, now = new Date()) {
+  const b = new Date(`${birthDate}T00:00:00`);
+  let age = now.getFullYear() - b.getFullYear();
+  if (now.getMonth() < b.getMonth() || (now.getMonth() === b.getMonth() && now.getDate() < b.getDate())) age--;
+  return age;
 }

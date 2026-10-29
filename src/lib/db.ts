@@ -5,6 +5,9 @@
  */
 
 import {
+  REGISTRATION_FEE,
+  SUBJECTS_BY_SECTION,
+  UNIFORM_FEE,
   totalDueFor,
   type PaymentMethod,
   type PaymentType,
@@ -105,6 +108,9 @@ export interface ClassItem {
   name: string;
   section: SectionId;
   academicYear: string;
+  /** Enseignant titulaire */
+  teacher?: string;
+  capacity?: number;
 }
 
 export interface DB {
@@ -119,7 +125,7 @@ export interface DB {
 
 const DB_KEY = "iqra_db";
 const SESSION_KEY = "iqra_session";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export function uid(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -132,8 +138,10 @@ export function today() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** Numéro de reçu suivant, unique même après suppression d'élèves */
 export function nextReceiptNumber(payments: Payment[]) {
-  return `IQ-2026-${String(payments.length + 1).padStart(4, "0")}`;
+  const max = payments.reduce((m, p) => Math.max(m, Number(p.receiptNumber.split("-").pop()) || 0), 0);
+  return `IQ-2026-${String(max + 1).padStart(4, "0")}`;
 }
 
 // --------------------------------------------------------------------
@@ -144,7 +152,56 @@ function demoDoc(name: string, type = "application/pdf", size = 240_000): DocFil
   return { name, type, size };
 }
 
+/** Générateur pseudo-aléatoire déterministe (mêmes notes à chaque réinitialisation) */
+function prng(seed: number) {
+  return () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function addDays(iso: string, days: number) {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+const AR_SUBJECTS: SubjectId[] = ["quran", "arabic", "tawhid_fiqh", "sira_adab"];
+
+/** Appréciations par tranche de note : arabe pour les matières arabes, français sinon */
+const REMARKS = {
+  ar: [
+    ["عمل ممتاز، بارك الله في جهوده", "حفظ متقن وأداء رائع", "مستوى متميّز، واصل على هذا النحو"],
+    ["جيّد جدًا، مواظبة واجتهاد", "تقدّم ملحوظ هذا الفصل", "عمل جيّد ومشاركة فعّالة"],
+    ["مقبول، يحتاج إلى مزيد من المراجعة", "مستوى متوسط ويمكن تحقيق الأفضل"],
+    ["ضعيف، يجب مضاعفة الجهد", "يحتاج إلى متابعة منتظمة في البيت"],
+  ],
+  fr: [
+    ["Excellent travail, félicitations.", "Très bon niveau, élève sérieux.", "Remarquable, continue ainsi."],
+    ["Bon travail, belle progression.", "Bien, élève appliqué.", "Résultats satisfaisants."],
+    ["Assez bien, peut mieux faire.", "Des efforts à poursuivre."],
+    ["Insuffisant, il faut se ressaisir.", "Travail irrégulier, à surveiller."],
+  ],
+};
+
+/** Scénario de paiement d'un élève du seed */
+type Plan = "full" | "reg" | "reg_acompte" | "reg_uni_acompte" | "none";
+
 function createSeed(): DB {
+  const parent = (id: string, fullName: string, email: string, phone: string, createdAt: string): StoredUser => ({
+    id,
+    fullName,
+    email,
+    phone,
+    role: "parent",
+    password: "parent123",
+    createdAt,
+  });
+
   const users: StoredUser[] = [
     {
       id: "usr-admin",
@@ -155,163 +212,162 @@ function createSeed(): DB {
       password: "admin123",
       createdAt: "2026-08-20",
     },
-    {
-      id: "usr-p1",
-      fullName: "Fatoumata Diallo",
-      email: "fatoumata.diallo@gmail.com",
-      phone: "+223 76 45 12 30",
-      role: "parent",
-      password: "parent123",
-      createdAt: "2026-09-01",
-    },
-    {
-      id: "usr-p2",
-      fullName: "Moussa Coulibaly",
-      email: "moussa.coulibaly@gmail.com",
-      phone: "+223 66 18 40 27",
-      role: "parent",
-      password: "parent123",
-      createdAt: "2026-09-04",
-    },
-    {
-      id: "usr-p3",
-      fullName: "Awa Traoré",
-      email: "awa.traore@gmail.com",
-      phone: "+223 79 02 55 61",
-      role: "parent",
-      password: "parent123",
-      createdAt: "2026-09-12",
-    },
-    {
-      id: "usr-p4",
-      fullName: "Boubacar Keïta",
-      email: "boubacar.keita@gmail.com",
-      phone: "+223 65 33 71 09",
-      role: "parent",
-      password: "parent123",
-      createdAt: "2026-09-06",
-    },
-    {
-      id: "usr-p5",
-      fullName: "Kadiatou Sangaré",
-      email: "kadiatou.sangare@gmail.com",
-      phone: "+223 70 41 26 88",
-      role: "parent",
-      password: "parent123",
-      createdAt: "2026-09-02",
-    },
-    {
-      id: "usr-p6",
-      fullName: "Seydou Konaté",
-      email: "seydou.konate@gmail.com",
-      phone: "+223 75 90 14 52",
-      role: "parent",
-      password: "parent123",
-      createdAt: "2026-09-08",
-    },
+    parent("usr-p1", "Fatoumata Diallo", "fatoumata.diallo@gmail.com", "+223 76 45 12 30", "2026-09-01"),
+    parent("usr-p2", "Moussa Coulibaly", "moussa.coulibaly@gmail.com", "+223 66 18 40 27", "2026-09-04"),
+    parent("usr-p3", "Awa Traoré", "awa.traore@gmail.com", "+223 79 02 55 61", "2026-10-20"),
+    parent("usr-p4", "Boubacar Keïta", "boubacar.keita@gmail.com", "+223 65 33 71 09", "2026-09-06"),
+    parent("usr-p5", "Kadiatou Sangaré", "kadiatou.sangare@gmail.com", "+223 70 41 26 88", "2026-09-02"),
+    parent("usr-p6", "Seydou Konaté", "seydou.konate@gmail.com", "+223 75 90 14 52", "2026-09-08"),
+    parent("usr-p7", "Mariam Touré", "mariam.toure@gmail.com", "+223 76 12 98 34", "2026-09-03"),
+    parent("usr-p8", "Amadou Cissé", "amadou.cisse@gmail.com", "+223 66 74 03 19", "2026-09-05"),
+    parent("usr-p9", "Rokia Dembélé", "rokia.dembele@gmail.com", "+223 79 55 21 70", "2026-09-07"),
+    parent("usr-p10", "Ibrahim Maïga", "ibrahim.maiga@gmail.com", "+223 65 08 47 92", "2026-09-09"),
+    parent("usr-p11", "Assétou Sidibé", "assetou.sidibe@gmail.com", "+223 70 63 82 15", "2026-09-10"),
+    parent("usr-p12", "Mamadou Doumbia", "mamadou.doumbia@gmail.com", "+223 76 27 59 03", "2026-09-11"),
+    parent("usr-p13", "Oumou Sylla", "oumou.sylla@gmail.com", "+223 66 92 30 48", "2026-09-14"),
+    parent("usr-p14", "Bakary Camara", "bakary.camara@gmail.com", "+223 75 16 44 81", "2026-09-15"),
   ];
 
   const classes: ClassItem[] = [
-    { id: "cls-1", name: "Petite section — القسم الصغير", section: "jardin", academicYear: "2026/2027" },
-    { id: "cls-2", name: "Grande section — القسم الكبير", section: "jardin", academicYear: "2026/2027" },
-    { id: "cls-3", name: "1ère année — السنة الأولى", section: "primaire", academicYear: "2026/2027" },
-    { id: "cls-4", name: "4e année A — السنة الرابعة أ", section: "primaire", academicYear: "2026/2027" },
-    { id: "cls-5", name: "6e année — السنة السادسة", section: "primaire", academicYear: "2026/2027" },
-    { id: "cls-6", name: "8e année — السنة الثامنة", section: "college", academicYear: "2026/2027" },
+    { id: "cls-1", name: "Petite section — القسم الصغير", section: "jardin", academicYear: "2026/2027", teacher: "Mme Kanté", capacity: 20 },
+    { id: "cls-2", name: "Grande section — القسم الكبير", section: "jardin", academicYear: "2026/2027", teacher: "Mme Diarra", capacity: 20 },
+    { id: "cls-3", name: "1ère année — السنة الأولى", section: "primaire", academicYear: "2026/2027", teacher: "M. Ousmane Traoré", capacity: 30 },
+    { id: "cls-4", name: "4e année A — السنة الرابعة أ", section: "primaire", academicYear: "2026/2027", teacher: "Mme Haïdara", capacity: 30 },
+    { id: "cls-5", name: "6e année — السنة السادسة", section: "primaire", academicYear: "2026/2027", teacher: "Oustaz Bah", capacity: 30 },
+    { id: "cls-6", name: "8e année — السنة الثامنة", section: "college", academicYear: "2026/2027", teacher: "M. Seydou Coulibaly", capacity: 35 },
   ];
 
-  const student = (
-    s: Omit<StudentRecord, "totalDue" | "documents"> & { documents?: StudentRecord["documents"] }
-  ): StudentRecord => ({
-    documents: {
-      birthCert: demoDoc(`acte_naissance_${s.firstName.toLowerCase()}.pdf`),
-      photo: demoDoc(`photo_${s.firstName.toLowerCase()}.jpg`, "image/jpeg", 180_000),
-    },
-    ...s,
-    totalDue: totalDueFor(s.section),
+  // [id, parent, prénom, nom, naissance, genre, cycle, classe, plan, acompte, santé]
+  const rows: [string, string, string, string, string, "M" | "F", SectionId, string | null, Plan, number, string?][] = [
+    ["stu-1", "usr-p1", "Aïcha", "Diallo", "2017-03-14", "F", "primaire", "cls-4", "reg_acompte", 100000],
+    ["stu-2", "usr-p1", "Ibrahim", "Diallo", "2021-06-02", "M", "jardin", "cls-2", "full", 0, "Allergie légère à l'arachide"],
+    ["stu-3", "usr-p2", "Oumar", "Coulibaly", "2013-11-20", "M", "college", "cls-6", "reg_uni_acompte", 105000],
+    ["stu-4", "usr-p2", "Mariam", "Coulibaly", "2019-01-09", "F", "primaire", null, "none", 0],
+    ["stu-5", "usr-p3", "Souleymane", "Traoré", "2018-08-27", "M", "primaire", null, "none", 0, "Asthme — inhalateur dans le cartable"],
+    ["stu-6", "usr-p4", "Hawa", "Keïta", "2022-02-15", "F", "jardin", "cls-1", "reg_acompte", 60000],
+    ["stu-7", "usr-p5", "Abdoulaye", "Sangaré", "2015-05-30", "M", "primaire", "cls-5", "full", 0],
+    ["stu-8", "usr-p6", "Fanta", "Konaté", "2014-12-12", "F", "college", "cls-6", "reg_acompte", 80000],
+    ["stu-9", "usr-p7", "Youssouf", "Touré", "2020-02-18", "M", "primaire", "cls-3", "reg_uni_acompte", 90000],
+    ["stu-10", "usr-p7", "Kadidia", "Touré", "2017-07-05", "F", "primaire", "cls-4", "full", 0],
+    ["stu-11", "usr-p8", "Bintou", "Cissé", "2022-09-21", "F", "jardin", "cls-1", "full", 0],
+    ["stu-12", "usr-p8", "Moussa", "Cissé", "2015-01-11", "M", "primaire", "cls-5", "reg", 0],
+    ["stu-13", "usr-p9", "Adama", "Dembélé", "2013-04-03", "M", "college", "cls-6", "reg_uni_acompte", 150000],
+    ["stu-14", "usr-p9", "Salimata", "Dembélé", "2017-10-28", "F", "primaire", "cls-4", "reg_acompte", 75000],
+    ["stu-15", "usr-p10", "Khadija", "Maïga", "2020-05-16", "F", "primaire", "cls-3", "full", 0],
+    ["stu-16", "usr-p10", "Issa", "Maïga", "2021-03-08", "M", "jardin", "cls-2", "reg_acompte", 50000],
+    ["stu-17", "usr-p11", "Lassana", "Sidibé", "2016-12-01", "M", "primaire", "cls-4", "reg", 0],
+    ["stu-18", "usr-p11", "Nana", "Sidibé", "2014-06-19", "F", "college", "cls-6", "full", 0],
+    ["stu-19", "usr-p12", "Hamza", "Doumbia", "2019-11-23", "M", "primaire", "cls-3", "reg_acompte", 60000],
+    ["stu-20", "usr-p12", "Fatim", "Doumbia", "2022-07-30", "F", "jardin", "cls-1", "reg_uni_acompte", 40000, "Port de lunettes"],
+    ["stu-21", "usr-p13", "Ousmane", "Sylla", "2015-08-09", "M", "primaire", "cls-5", "reg_uni_acompte", 120000],
+    ["stu-22", "usr-p14", "Aminata", "Camara", "2020-01-27", "F", "primaire", "cls-3", "reg_acompte", 80000],
+    ["stu-23", "usr-p14", "Sekou", "Camara", "2012-10-14", "M", "college", null, "none", 0],
+  ];
+
+  const parentCreated = (pid: string) => users.find((u) => u.id === pid)!.createdAt;
+  const methods: PaymentMethod[] = ["orange_money", "especes", "wave", "moov_money"];
+
+  const students: StudentRecord[] = [];
+  const rawPayments: Omit<Payment, "id" | "receiptNumber">[] = [];
+
+  rows.forEach(([id, parentId, firstName, lastName, birthDate, gender, section, classId, plan, acompte, health], i) => {
+    const pending = plan === "none";
+    const createdAt = pending ? addDays(parentCreated(parentId), parentId === "usr-p2" ? 47 : 4) : parentCreated(parentId);
+    const slug = firstName.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const totalDue = totalDueFor(section);
+    students.push({
+      id,
+      parentId,
+      firstName,
+      lastName,
+      birthDate,
+      gender,
+      section,
+      status: pending ? "en_attente_paiement" : "valide",
+      classId: classId ?? undefined,
+      healthNotes: health,
+      documents: {
+        birthCert: demoDoc(`acte_naissance_${slug}.pdf`),
+        photo: demoDoc(`photo_${slug}.jpg`, "image/jpeg", 180_000),
+        ...(i % 3 === 0 ? { healthRecord: demoDoc(`carnet_vaccination_${slug}.pdf`, "application/pdf", 320_000) } : {}),
+      },
+      totalDue,
+      createdAt,
+    });
+
+    if (pending) return;
+    const method = methods[i % methods.length];
+    const pay = (type: PaymentType, amount: number, days: number, m: PaymentMethod = method) =>
+      rawPayments.push({ studentId: id, amount, type, method: m, date: addDays(createdAt, days), validatedBy: "Direction IQRA" });
+
+    pay("inscription", REGISTRATION_FEE, 2);
+    if (plan === "full") pay("solde", totalDue - REGISTRATION_FEE, 9 + (i % 5));
+    if (plan === "reg_uni_acompte") pay("tenues", UNIFORM_FEE[section], 2, "especes");
+    if (plan === "reg_acompte" || plan === "reg_uni_acompte") pay("acompte", acompte, 18 + (i % 9));
   });
 
-  const students: StudentRecord[] = [
-    student({ id: "stu-1", parentId: "usr-p1", firstName: "Aïcha", lastName: "Diallo", birthDate: "2017-03-14", gender: "F", section: "primaire", status: "valide", classId: "cls-4", createdAt: "2026-09-01" }),
-    student({ id: "stu-2", parentId: "usr-p1", firstName: "Ibrahim", lastName: "Diallo", birthDate: "2021-06-02", gender: "M", section: "jardin", status: "valide", classId: "cls-2", healthNotes: "Allergie légère à l'arachide", createdAt: "2026-09-01" }),
-    student({ id: "stu-3", parentId: "usr-p2", firstName: "Oumar", lastName: "Coulibaly", birthDate: "2013-11-20", gender: "M", section: "college", status: "valide", classId: "cls-6", createdAt: "2026-09-04" }),
-    student({ id: "stu-4", parentId: "usr-p2", firstName: "Mariam", lastName: "Coulibaly", birthDate: "2019-01-09", gender: "F", section: "primaire", status: "en_attente_paiement", createdAt: "2026-10-21" }),
-    student({ id: "stu-5", parentId: "usr-p3", firstName: "Souleymane", lastName: "Traoré", birthDate: "2018-08-27", gender: "M", section: "primaire", status: "en_attente_paiement", createdAt: "2026-10-24" }),
-    student({ id: "stu-6", parentId: "usr-p4", firstName: "Hawa", lastName: "Keïta", birthDate: "2022-02-15", gender: "F", section: "jardin", status: "valide", classId: "cls-1", createdAt: "2026-09-06" }),
-    student({ id: "stu-7", parentId: "usr-p5", firstName: "Abdoulaye", lastName: "Sangaré", birthDate: "2015-05-30", gender: "M", section: "primaire", status: "valide", classId: "cls-5", createdAt: "2026-09-02" }),
-    student({ id: "stu-8", parentId: "usr-p6", firstName: "Fanta", lastName: "Konaté", birthDate: "2014-12-12", gender: "F", section: "college", status: "valide", classId: "cls-6", createdAt: "2026-09-08" }),
-  ];
+  // Reçus numérotés dans l'ordre chronologique, affichés du plus récent au plus ancien
+  const payments: Payment[] = rawPayments
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((p, n) => ({ ...p, id: `pay-${n + 1}`, receiptNumber: `IQ-2026-${String(n + 1).padStart(4, "0")}` }))
+    .reverse();
 
-  const pay = (
-    n: number,
-    studentId: string,
-    amount: number,
-    type: PaymentType,
-    method: PaymentMethod,
-    date: string
-  ): Payment => ({
-    id: `pay-${n}`,
-    studentId,
-    receiptNumber: `IQ-2026-${String(n).padStart(4, "0")}`,
-    amount,
-    type,
-    method,
-    date,
-    validatedBy: "Direction IQRA",
+  // Notes du 1er trimestre pour chaque élève affecté à une classe
+  const rand = prng(2026);
+  const grades: GradeItem[] = [];
+  students
+    .filter((s) => s.classId)
+    .forEach((s) => {
+      const level = 9.5 + rand() * 8.5;
+      SUBJECTS_BY_SECTION[s.section].forEach((subject) => {
+        const score = Math.max(4, Math.min(20, Math.round((level + (rand() - 0.5) * 6) * 2) / 2));
+        const band = score >= 16 ? 0 : score >= 13 ? 1 : score >= 10 ? 2 : 3;
+        const pool = REMARKS[AR_SUBJECTS.includes(subject) ? "ar" : "fr"][band];
+        grades.push({
+          id: `grd-${grades.length + 1}`,
+          studentId: s.id,
+          subject,
+          score,
+          maxScore: 20,
+          term: "t1",
+          remarks: pool[Math.floor(rand() * pool.length)],
+          date: addDays("2026-10-20", Math.floor(rand() * 6)),
+        });
+      });
+    });
+
+  const paidOf = (sid: string) => payments.filter((p) => p.studentId === sid).reduce((a, p) => a + p.amount, 0);
+  const remainingOf = (s: StudentRecord) => s.totalDue - paidOf(s.id);
+
+  const notifications: NotificationItem[] = [];
+  const notify = (n: Omit<NotificationItem, "id">) => notifications.push({ ...n, id: `ntf-${notifications.length + 1}` });
+
+  users
+    .filter((u) => u.role === "parent")
+    .forEach((u) => notify({ parentId: u.id, kind: "welcome", date: u.createdAt, isRead: true }));
+  students.forEach((s) => {
+    if (s.status === "en_attente_paiement") {
+      notify({ parentId: s.parentId, studentId: s.id, kind: "enrollment_received", date: s.createdAt, isRead: false });
+      return;
+    }
+    const last = payments.find((p) => p.studentId === s.id);
+    if (last) {
+      notify({
+        parentId: s.parentId,
+        studentId: s.id,
+        kind: "payment_confirmed",
+        amount: last.amount,
+        receiptNumber: last.receiptNumber,
+        date: last.date,
+        isRead: true,
+      });
+    }
+    if (s.classId) notify({ parentId: s.parentId, studentId: s.id, kind: "grade_published", subject: "quran", date: "2026-10-25", isRead: false });
+    if (remainingOf(s) > 0 && ["stu-1", "stu-3", "stu-12", "stu-17"].includes(s.id)) {
+      notify({ parentId: s.parentId, studentId: s.id, kind: "reminder", amount: remainingOf(s), date: "2026-10-26", isRead: false });
+    }
   });
-
-  const payments: Payment[] = [
-    pay(1, "stu-1", 25000, "inscription", "orange_money", "2026-09-03"),
-    pay(2, "stu-2", 25000, "inscription", "wave", "2026-09-03"),
-    pay(3, "stu-7", 222500, "solde", "orange_money", "2026-09-04"),
-    pay(4, "stu-3", 25000, "inscription", "especes", "2026-09-08"),
-    pay(5, "stu-3", 20000, "tenues", "especes", "2026-09-08"),
-    pay(6, "stu-6", 25000, "inscription", "moov_money", "2026-09-09"),
-    pay(7, "stu-8", 25000, "inscription", "wave", "2026-09-10"),
-    pay(8, "stu-2", 165000, "solde", "wave", "2026-09-15"),
-    pay(9, "stu-1", 100000, "acompte", "especes", "2026-09-20"),
-    pay(10, "stu-6", 60000, "acompte", "orange_money", "2026-09-28"),
-    pay(11, "stu-3", 105000, "acompte", "orange_money", "2026-10-02"),
-    pay(12, "stu-8", 80000, "acompte", "especes", "2026-10-05"),
-  ].reverse();
-
-  const grade = (
-    id: number,
-    studentId: string,
-    subject: SubjectId,
-    score: number,
-    remarks: string,
-    date = "2026-10-24"
-  ): GradeItem => ({ id: `grd-${id}`, studentId, subject, score, maxScore: 20, term: "t1", remarks, date });
-
-  const grades: GradeItem[] = [
-    grade(1, "stu-1", "quran", 18, "حفظ متقن وتلاوة جميلة، بارك الله فيها"),
-    grade(2, "stu-1", "arabic", 16.5, "تقدّم ملحوظ في القراءة والكتابة"),
-    grade(3, "stu-1", "tawhid_fiqh", 18.5, "مواظبة ممتازة وفهم جيّد"),
-    grade(4, "stu-1", "french", 15, "Bonne expression écrite, continue ainsi."),
-    grade(5, "stu-1", "maths", 17, "Excellent raisonnement, très appliquée."),
-    grade(6, "stu-2", "quran", 19, "ما شاء الله، حفظ سريع ونطق سليم"),
-    grade(7, "stu-2", "french", 16, "Très bon éveil, enfant curieux et souriant."),
-    grade(8, "stu-3", "quran", 15, "حفظ جيّد، يحتاج إلى مراجعة أكثر"),
-    grade(9, "stu-3", "arabic", 14, "مستوى جيّد في القواعد"),
-    grade(10, "stu-3", "french", 13.5, "Des efforts à poursuivre en rédaction."),
-    grade(11, "stu-3", "maths", 16, "Très bon niveau, sérieux en classe."),
-    grade(12, "stu-3", "sciences", 14.5, "Bonne participation."),
-    grade(13, "stu-3", "english", 12, "Peut mieux faire à l'oral."),
-    grade(14, "stu-7", "quran", 17.5, "حافظ متميّز، قدوة لزملائه"),
-    grade(15, "stu-7", "maths", 18, "Excellent travail, félicitations."),
-    grade(16, "stu-7", "sira_adab", 16, "أدب رفيع وسلوك حسن"),
-  ];
-
-  const notifications: NotificationItem[] = [
-    { id: "ntf-1", parentId: "usr-p1", kind: "welcome", date: "2026-09-01", isRead: true },
-    { id: "ntf-2", parentId: "usr-p1", studentId: "stu-1", kind: "payment_confirmed", amount: 100000, receiptNumber: "IQ-2026-0009", date: "2026-09-20", isRead: true },
-    { id: "ntf-3", parentId: "usr-p1", studentId: "stu-1", kind: "grade_published", subject: "quran", date: "2026-10-24", isRead: false },
-    { id: "ntf-4", parentId: "usr-p1", studentId: "stu-1", kind: "reminder", amount: 97500, date: "2026-10-26", isRead: false },
-    { id: "ntf-5", parentId: "usr-p2", kind: "welcome", date: "2026-09-04", isRead: true },
-    { id: "ntf-6", parentId: "usr-p2", studentId: "stu-4", kind: "enrollment_received", date: "2026-10-21", isRead: false },
-    { id: "ntf-7", parentId: "usr-p2", studentId: "stu-3", kind: "reminder", amount: 105000, date: "2026-10-26", isRead: false },
-  ];
+  notifications.sort((a, b) => b.date.localeCompare(a.date));
 
   return { version: DB_VERSION, users, students, payments, notifications, grades, classes };
 }

@@ -14,6 +14,7 @@ import {
   Info,
   LogOut,
   Phone,
+  Printer,
   Receipt,
   UserRound,
   Baby,
@@ -23,8 +24,9 @@ import { LogoMark } from "@/components/Logo";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { InfoBox, LoadingScreen, Modal, PhoneText, WhatsAppIcon } from "@/components/ui";
 import { Bulletin } from "@/components/dashboard/Bulletin";
+import { ReceiptModal } from "@/components/dashboard/ReceiptDoc";
 import { NOTIF_STYLE, notificationText } from "@/components/dashboard/notifications";
-import { useSchool, type Student } from "@/context/SchoolContext";
+import { useSchool, type Payment, type Student } from "@/context/SchoolContext";
 import { useI18n } from "@/context/LanguageContext";
 import { REGISTRATION_FEE, SCHOOL, telLink, whatsappLink } from "@/lib/school";
 
@@ -38,6 +40,7 @@ export default function ParentDashboardPage() {
   const [payFor, setPayFor] = useState<Student | null>(null);
   const [receiptsFor, setReceiptsFor] = useState<Student | null>(null);
   const [bulletinFor, setBulletinFor] = useState<Student | null>(null);
+  const [printReceipt, setPrintReceipt] = useState<Payment | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
 
   if (!ready) return <LoadingScreen />;
@@ -238,7 +241,7 @@ export default function ParentDashboardPage() {
                             {student.firstName} {student.lastName}
                           </h3>
                           <p className="text-xs text-deep/55">
-                            {t.labels.sections[student.section]} · {p.classLabel} : {cls ? cls.name : p.notAssigned}
+                            {t.labels.sections[student.section]} · {p.classLabel} : <bdi>{cls ? cls.name : p.notAssigned}</bdi>
                           </p>
                         </div>
                       </div>
@@ -475,9 +478,15 @@ export default function ParentDashboardPage() {
                     </div>
                     <div className="text-end">
                       <span className="block font-display font-extrabold text-emerald">+{money(x.amount)}</span>
-                      <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-mint px-2 py-0.5 text-[10px] font-semibold text-emerald">
-                        <CircleCheck className="h-3 w-3" /> {p.officialReceipt}
-                      </span>
+                      <button
+                        onClick={() => {
+                          setReceiptsFor(null);
+                          setPrintReceipt(x);
+                        }}
+                        className="mt-1 inline-flex items-center gap-1 rounded-full bg-mint px-2 py-0.5 text-[10px] font-semibold text-emerald hover:bg-emerald hover:text-white"
+                      >
+                        <Printer className="h-3 w-3" /> {p.officialReceipt}
+                      </button>
                     </div>
                   </div>
                 ))
@@ -485,6 +494,8 @@ export default function ParentDashboardPage() {
           </div>
         )}
       </Modal>
+
+      <ReceiptModal payment={printReceipt} students={students} payments={payments} onClose={() => setPrintReceipt(null)} />
 
       {/* Bulletin */}
       <Modal

@@ -221,39 +221,139 @@ async function sendReminder(studentId: string) {
 
 async function sendAllReminders() {
   const db = ensureState().db;
-  const notifs = db.students.map((s) => reminderFor(db, s.id)).filter((n): n is NotificationItem => n !== null);
+  const notifs = db.students
+    .filter((s) => s.status === "valide")
+    .map((s) => reminderFor(db, s.id)).filter((n): n is NotificationItem => n !== null);
   update((st) => ({ ...st, db: { ...st.db, notifications: [...notifs, ...st.db.notifications] } }));
   return notifs.length;
 }
 
-async function addGrade(input: Omit<GradeItem, "id" | "date">) {
-  const student = ensureState().db.students.find((x) => x.id === input.studentId);
-  if (!student) throw new Error("generic");
-  const grade: GradeItem = { ...input, id: uid("grd"), date: today() };
-  const notif: NotificationItem = {
-    id: uid("ntf"),
-    parentId: student.parentId,
-    studentId: student.id,
-    kind: "grade_published",
-    subject: input.subject,
-    date: today(),
-    isRead: false,
-  };
+export type GradeInput = Omit<GradeItem, "id" | "date">;
+
+/** Enregistre des notes (une par élève / matière / trimestre, remplacée si elle existe) et prévient les familles */
+async function saveGrades(inputs: GradeInput[]) {
+  const db = ensureState().db;
+  const valid = inputs.filter((g) => db.students.some((s) => s.id === g.studentId));
+  if (valid.length === 0) return 0;
+
+  const key = (g: Pick<GradeItem, "studentId" | "subject" | "term">) => `${g.studentId}|${g.subject}|${g.term}`;
+  const incoming = new Map(valid.map((g) => [key(g), g]));
+  const kept = db.grades.filter((g) => !incoming.has(key(g)));
+  const saved: GradeItem[] = valid.map((g) => {
+    const existing = db.grades.find((x) => key(x) === key(g));
+    return { ...g, id: existing?.id ?? uid("grd"), date: today() };
+  });
+
+  const notifs: NotificationItem[] = [...new Set(valid.map((g) => g.studentId))].map((studentId) => {
+    const st = db.students.find((s) => s.id === studentId)!;
+    return {
+      id: uid("ntf"),
+      parentId: st.parentId,
+      studentId,
+      kind: "grade_published",
+      subject: valid.find((g) => g.studentId === studentId)!.subject,
+      date: today(),
+      isRead: false,
+    };
+  });
+
   update((st) => ({
     ...st,
-    db: { ...st.db, grades: [grade, ...st.db.grades], notifications: [notif, ...st.db.notifications] },
+    db: { ...st.db, grades: [...saved, ...kept], notifications: [...notifs, ...st.db.notifications] },
+  }));
+  return saved.length;
+}
+
+async function addGrade(input: GradeInput) {
+  if ((await saveGrades([input])) === 0) throw new Error("generic");
+}
+
+async function deleteGrade(gradeId: string) {
+  update((st) => ({ ...st, db: { ...st.db, grades: st.db.grades.filter((g) => g.id !== gradeId) } }));
+}
+
+export type ClassInput = Pick<ClassItem, "name" | "section" | "teacher" | "capacity">;
+
+async function addClass(input: ClassInput) {
+  const cls: ClassItem = { ...input, name: input.name.trim(), id: uid("cls"), academicYear: "2026/2027" };
+  update((st) => ({ ...st, db: { ...st.db, classes: [...st.db.classes, cls] } }));
+  return cls;
+}
+
+async function updateClass(classId: string, patch: Partial<ClassInput>) {
+  update((st) => ({
+    ...st,
+    db: {
+      ...st.db,
+      classes: st.db.classes.map((c) => (c.id === classId ? { ...c, ...patch } : c)),
+      // une classe qui change de cycle ne garde que les élèves de ce cycle
+      students: patch.section
+        ? st.db.students.map((s) => (s.classId === classId && s.section !== patch.section ? { ...s, classId: undefined } : s))
+        : st.db.students,
+    },
   }));
 }
 
-async function addClass(name: string, section: SectionId) {
-  const cls: ClassItem = { id: uid("cls"), name: name.trim(), section, academicYear: "2026/2027" };
-  update((st) => ({ ...st, db: { ...st.db, classes: [...st.db.classes, cls] } }));
+async function deleteClass(classId: string) {
+  update((st) => ({
+    ...st,
+    db: {
+      ...st.db,
+      classes: st.db.classes.filter((c) => c.id !== classId),
+      students: st.db.students.map((s) => (s.classId === classId ? { ...s, classId: undefined } : s)),
+    },
+  }));
 }
 
 async function assignClass(studentId: string, classId: string | undefined) {
   update((st) => ({
     ...st,
     db: { ...st.db, students: st.db.students.map((x) => (x.id === studentId ? { ...x, classId } : x)) },
+  }));
+}
+
+export type StudentPatch = Partial<
+  Pick<StudentRecord, "firstName" | "lastName" | "birthDate" | "gender" | "section" | "classId" | "healthNotes">
+>;
+
+/** Modifie la fiche ; un changement de cycle recalcule le montant dû et retire la classe incompatible */
+async function updateStudent(studentId: string, patch: StudentPatch) {
+  update((st) => ({
+    ...st,
+    db: {
+      ...st.db,
+      students: st.db.students.map((s) => {
+        if (s.id !== studentId) return s;
+        const next = { ...s, ...patch };
+        if (patch.section && patch.section !== s.section) {
+          next.totalDue = totalDueFor(patch.section);
+          const cls = st.db.classes.find((c) => c.id === next.classId);
+          if (cls && cls.section !== patch.section) next.classId = undefined;
+        }
+        return next;
+      }),
+    },
+  }));
+}
+
+async function setStudentStatus(studentId: string, status: StudentRecord["status"]) {
+  update((st) => ({
+    ...st,
+    db: { ...st.db, students: st.db.students.map((s) => (s.id === studentId ? { ...s, status } : s)) },
+  }));
+}
+
+/** Supprime l'élève et tout ce qui lui est rattaché (paiements, notes, notifications) */
+async function deleteStudent(studentId: string) {
+  update((st) => ({
+    ...st,
+    db: {
+      ...st.db,
+      students: st.db.students.filter((s) => s.id !== studentId),
+      payments: st.db.payments.filter((p) => p.studentId !== studentId),
+      grades: st.db.grades.filter((g) => g.studentId !== studentId),
+      notifications: st.db.notifications.filter((n) => n.studentId !== studentId),
+    },
   }));
 }
 
@@ -281,8 +381,15 @@ const actions = {
   sendReminder,
   sendAllReminders,
   addGrade,
+  saveGrades,
+  deleteGrade,
   addClass,
+  updateClass,
+  deleteClass,
   assignClass,
+  updateStudent,
+  setStudentStatus,
+  deleteStudent,
   markNotificationsRead,
   resetDemo,
 };
@@ -295,6 +402,8 @@ interface SchoolContextType extends Readonly<typeof actions> {
   /** false pendant le rendu serveur / l'hydratation, avant lecture du localStorage */
   ready: boolean;
   currentUser: UserAccount | null;
+  /** Comptes parents (sans mot de passe) */
+  parents: UserAccount[];
   students: Student[];
   payments: Payment[];
   notifications: NotificationItem[];
@@ -313,6 +422,7 @@ export function SchoolProvider({ children }: { children: React.ReactNode }) {
         ...actions,
         ready: false,
         currentUser: null,
+        parents: [],
         students: [],
         payments: [],
         notifications: [],
@@ -335,6 +445,9 @@ export function SchoolProvider({ children }: { children: React.ReactNode }) {
       ...actions,
       ready: true,
       currentUser: currentUserOf(snapshot),
+      parents: db.users
+        .filter((u) => u.role === "parent")
+        .map(({ id, fullName, email, phone, role, createdAt }) => ({ id, fullName, email, phone, role, createdAt })),
       students,
       payments: db.payments,
       notifications: db.notifications,

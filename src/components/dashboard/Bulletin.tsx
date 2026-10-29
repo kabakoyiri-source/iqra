@@ -6,21 +6,7 @@ import { LogoGlyph } from "@/components/Logo";
 import type { ClassItem, GradeItem, Student } from "@/context/SchoolContext";
 import { useI18n } from "@/context/LanguageContext";
 import { SCHOOL, TERM_IDS, type TermId } from "@/lib/school";
-import type { Dict } from "@/lib/i18n";
-
-export function averageOf(grades: GradeItem[]) {
-  if (grades.length === 0) return 0;
-  return grades.reduce((acc, g) => acc + (g.score / g.maxScore) * 20, 0) / grades.length;
-}
-
-export function mentionFor(avg: number, t: Dict) {
-  const m = t.labels.mentions;
-  if (avg >= 16) return m.excellent;
-  if (avg >= 14) return m.tresBien;
-  if (avg >= 12) return m.bien;
-  if (avg >= 10) return m.assezBien;
-  return m.insuffisant;
-}
+import { averageOf, mentionFor } from "@/lib/stats";
 
 /** Bulletin trimestriel imprimable, en-tête bilingue comme un document officiel */
 export function Bulletin({ student, grades, classes }: { student: Student; grades: GradeItem[]; classes: ClassItem[] }) {
@@ -92,7 +78,12 @@ export function Bulletin({ student, grades, classes }: { student: Student; grade
               </p>
               <p className="text-xs text-deep/60">
                 {t.labels.sections[student.section]}
-                {cls ? ` · ${cls.name}` : ""} · {t.parent.bornOn(date(student.birthDate))}
+                {cls && (
+                  <>
+                    {" · "}
+                    <bdi>{cls.name}</bdi>
+                  </>
+                )} · {t.parent.bornOn(date(student.birthDate))}
               </p>
             </div>
             <div className="rounded-2xl bg-mint px-4 py-2.5 text-center">
